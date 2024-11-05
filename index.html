@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Detection</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        #camera {
+            margin-bottom: 20px;
+        }
+
+        #buttons {
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>Emotion Detection</h1>
+    <input type="file" id="fileInput" accept="image/*">
+    <button onclick="uploadImage()">Upload Photo</button>
+    <button onclick="openCamera()">Take a Photo</button>
+    <div id="camera" style="display:none">
+        <video id="video" width="640" height="480" autoplay></video>
+        <button onclick="takeSnapshot()">Take Snapshot</button>
+    </div>
+    <canvas id="canvas" style="display:none"></canvas>
+    <img id="capturedImage" style="display:none">
+    <div id="buttons" style="display:none">
+        <button onclick="uploadSnapshot()">Upload</button>
+        <button onclick="retakeSnapshot()">Retake</button>
+    </div>
+
+    <script>
+        let stream;
+
+        function uploadImage() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select an image to upload.');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('image', file);
+
+            const resultWindow = window.open('', '_blank');
+            resultWindow.document.write('<h1>Loading...</h1>');
+
+            fetch('http://127.0.0.1:5000/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                displayResult(resultWindow, data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                resultWindow.document.body.innerHTML = '<h1>Error occurred while sending the image.</h1>';
+            });
+        }
+
+function displayResult(resultWindow, data) {
+        resultWindow.document.body.innerHTML = `
+            <h1>Predicted Emotion: ${data.prediction}</h1>
+            <h2>Related Videos:</h2>
+            <div style="display: flex; flex-wrap: wrap;">
+                ${data.videos.map(video => `
+                    <div style="margin: 10px;">
+                        <h3>${video.title}</h3>
+                        <iframe width="420" height="315"
+                            src="https://www.youtube.com/embed/${video.video_id}">
+                        </iframe>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+        function openCamera() {
+            const cameraDiv = document.getElementById('camera');
+            cameraDiv.style.display = 'block';
+
+            const video = document.getElementById('video');
+
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(function(str) {
+                        stream = str;
+                        video.srcObject = stream;
+                        video.play();
+                    });
+            }
+        }
+
+        function closeCamera() {
+            const video = document.getElementById('video');
+            video.srcObject.getTracks().forEach(track => {
+                track.stop();
+            });
+        }
+
+        function takeSnapshot() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const capturedImage = document.getElementById('capturedImage');
+            capturedImage.src = canvas.toDataURL('image/png');
+            capturedImage.style.display = 'block';
+
+            const buttonsDiv = document.getElementById('buttons');
+            buttonsDiv.style.display = 'block';
+
+            closeCamera();
+        }
+
+        function retakeSnapshot() {
+            const capturedImage = document.getElementById('capturedImage');
+            capturedImage.style.display = 'none';
+
+            const buttonsDiv = document.getElementById('buttons');
+            buttonsDiv.style.display = 'none';
+
+            openCamera();
+        }
+
+        function uploadSnapshot() {
+            const canvas = document.getElementById('canvas');
+            const capturedImage = document.getElementById('capturedImage');
+            const context = canvas.getContext('2d');
+            canvas.width = capturedImage.width;
+            canvas.height = capturedImage.height;
+            context.drawImage(capturedImage, 0, 0, canvas.width, canvas.height);
+
+            const formData = new FormData();
+            canvas.toBlob(function(blob) {
+                formData.append('image', blob);
+
+                const resultWindow = window.open('', '_blank');
+                resultWindow.document.write('<h1>Snapshot</h1>');
+                resultWindow.document.body.appendChild(capturedImage);
+
+                resultWindow.document.write('<h1>Loading...</h1>');
+
+                fetch('http://127.0.0.1:5000/predict', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data);
+                    displayResult(resultWindow, data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    resultWindow.document.body.innerHTML = '<h1>Error occurred while sending the image.</h1>';
+                });
+            });
+        }
+    </script>
+</body>
+</html>
